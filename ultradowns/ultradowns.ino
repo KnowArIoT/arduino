@@ -38,12 +38,19 @@ const String u1 = "u1:";      // Ultrasound sensor 1
 const String u2 = "u2:";      // Ultrasound sensor 2
 const String gas = "gas:";    // Gas sensor
 
+extern "C" {
+  void setupTimer(void);
+}
+
 void setup() {
   Serial.begin(9600);
+  Serial.print("starting");
+  setupTimer();
   filterValueU1 = sonar1.ping_cm();
   filterValueU2 = sonar2.ping_cm();
   //filterValueGas = analogRead(GAS_SENSOR_PIN);
-  //initInteruptTimer(1);
+  pinMode(LED_BUILTIN, OUTPUT);
+  digitalWrite(LED_BUILTIN, LOW);    // turn the LED off by making the voltage LOW
 }
  
 void loop() {
@@ -61,7 +68,6 @@ void loop() {
    // Print values
    printValue(u1, filterValueU1);
    printValue(u2, filterValueU2);
-
 }
 
 // sensor - sensor tag ending with ":". Eg. "u1:"
@@ -90,40 +96,15 @@ void sampleGasSensor(float &filterValue, unsigned int filterSize) {
   processSensorValue(filterValue, gasRead, filterSizeGas);
 }
 
-/*void initInteruptTimer(int hertz) {
-  cli();
-  asm(
-    "out %[tccr0a], 0x00\n"
-    "out %[tccr0b], 0x00\n"
-    "out %[tcnt0],  0x00\n"
-    "out %[ocr0a], 15624\n"
-    "ldi r14, 0x01\n"
-    "lsl r14, 0x00\n"
-    "ldi r15, 0x01\n"
-    "lsl r15, 0x02\n"
-    
-    "ldi r16, (1<<CS12)|(1<<CS10)\n"
-    "out %[tccr0b], r16\n"
-    "ldi r16, (1<<WGM01)\n"
-    "out %[tccr0a], r16\n"
-    "ldi r16,1<<OCIE0A\n"
-    "sts %[timsk0],r16\n"
-    "ret\n"
-    :: 
-    [tccr0a] "I" (_SFR_IO_ADDR(TCCR0A)),
-    [tccr0b] "I" (_SFR_IO_ADDR(TCCR0B)),
-    [tcnt0]  "I" (_SFR_IO_ADDR(TCNT0)),
-    [ocr0a]  "I" (_SFR_IO_ADDR(OCR0A)),
-    [timsk0] "I" (_SFR_IO_ADDR(TIMSK0))
-    );
-  sei();
-}
-
-ISR(TIMER0_COMPA_vect) {
+// Called whenever TCNT1 overflows
+ISR(TIMER1_OVF_vect) {
+  TCNT1 = 34286; // 2 hz by filling the counter
+  digitalWrite(LED_BUILTIN, digitalRead(LED_BUILTIN) ^ 1);
+  Serial.println("interrupt");
   if (toggleGas) {
-    sampleGasSensor(filterValueGas, filterSizeGas);
-    printValue(gas, filterValueGas);
-    toggleGas = 0;
+//    sampleGasSensor(filterValueGas, filterSizeGas);
+//    printValue(gas, filterValueGas);
+    toggleGas = 0;    
   }
-}*/
+}
 
