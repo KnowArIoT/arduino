@@ -36,6 +36,8 @@ const unsigned int oversamples = 1;
 const unsigned int filterSizeU = 10;
 float filterValueU1, filterValueU2;
 
+uint8_t timerTrigger;
+
 // Gas sensor setup
 const unsigned int filterSizeGas = 10;
 float filterValueGas;
@@ -63,39 +65,53 @@ extern "C" {
   void setupTimer(void);
 }
 
-void setup() {
-  Serial.begin(115200);
-  //filterValueU1 = sonar1.ping_cm();
-  //filterValueU2 = sonar2.ping_cm();
-  filterValueGas = analogRead(GAS_SENSOR_PIN);
+void processSensors() {
 
-  // Initialize IMU
-  //imu = RTIMU::createIMU(&settings);
-  //initIMU(imu, fusion);
+  if((tick & 0x01) == 0) {
+    sampleIMU(imu);
+    RTMath::display(accl, (RTVector3&)imu->getAccel());
+    Serial.print('\n');
+    RTMath::display(gyro, (RTVector3&)imu->getGyro());
+    Serial.print('\n');
+    RTMath::display(mag, (RTVector3&)imu->getCompass());
+    Serial.print('\n');
+  }
+  if((tick & 0x07) == 0) { 
+    sampleUltrasound(sonar1.ping_cm(), filterValueU1, filterSizeU, oversamples);
+    printValue(u1, filterValueU1);
+    
+    sampleUltrasound(sonar2.ping_cm(), filterValueU2, filterSizeU, oversamples);
+    printValue(u2, filterValueU2);
+  }
 
-  setupTimer();
+  if((tick & 0x3F) == 0) {
+    sampleGasSensor(filterValueGas, filterSizeGas); 
+    printValue(gas, filterValueGas); 
+  }
 
 }
 
+void setup() {
+  Serial.begin(115200);
+  filterValueU1 = sonar1.ping_cm();
+  filterValueU2 = sonar2.ping_cm();
+  filterValueGas = analogRead(GAS_SENSOR_PIN);
+
+  // Initialize IMU
+  imu = RTIMU::createIMU(&settings);
+  initIMU(imu, fusion);
+
+  timerTrigger = 0;
+  setupTimer();
+
+  Serial.println("Setup complete");
+}
+
 void loop() {
-  // Sampling and processing ultrasound sensor
-  /*unsigned int uS1 = sonar1.ping_cm();
-    sampleUltrasound(uS1, filterValueU1, filterSizeU, oversamples);
-    unsigned int uS2 = sonar2.ping_cm();
-    sampleUltrasound(uS2, filterValueU2, filterSizeU, oversamples);
-  */
-
-  // Sampling and processing gas sensor
-  //gasRead = analogRead(GAS_SENSOR_PIN);
-  //processSensorValue(filterValueGas, gasRead, filterSizeGas);
-  //sampleGasSensor(filterValueGas, filterSizeGas);
-
-  // Print values
-  /*printValue(u1, filterValueU1);
-    printValue(u2, filterValueU2);*/
-  //sampleIMU(imu);
-  //RTMath::display("Mag:", (RTVector3&)imu->getCompass());
-  //Serial.println();
+  if (timerTrigger) {
+    timerTrigger = 0;
+    processSensors();
+  }
 }
 
 // sensor - sensor tag ending with ":". Eg. "u1:"
@@ -142,35 +158,13 @@ void sampleIMU(RTIMU *imu) {
       continue;
     fusion.newIMUData(imu->getGyro(), imu->getAccel(), imu->getCompass(), imu->getTimestamp());
   }
-
 }
 
 // Called whenever TCNT1 overflows
 ISR(TIMER1_OVF_vect) {
+  timerTrigger = 1;
   TCNT1 = 34286; // 64 hz by filling the counter
   
   tick < 65536 ? tick++ : tick = 0; // Shadow tick counter
-
-  if(tick % 2 == 0) {
-    sampleIMU(imu);
-    RTMath::display(accl, (RTVector3&)imu->getAccel());
-    Serial.print('\n');
-    RTMath::display(gyro, (RTVector3&)imu->getGyro());
-    Serial.print('\n');
-    RTMath::display(mag, (RTVector3&)imu->getCompass());
-    Serial.print('\n');
-  }
-  if(tick % 8 == 0) { 
-    sampleUltrasound(sonar1.ping_cm(), filterValueU1, filterSizeU, oversamples);
-    printValue(u1, filterValueU1);
-    
-    sampleUltrasound(sonar2.ping_cm(), filterValueU2, filterSizeU, oversamples);
-    printValue(u2, filterValueU2);
-  }
-
-  if(tick % 64 == 0) {
-    sampleGasSensor(filterValueGas, filterSizeGas); 
-    printValue(gas, filterValueGas); 
-  }
 }
 
