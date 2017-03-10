@@ -22,8 +22,7 @@
 #define GAS_SENSOR_PIN A0
 
 // GPS defines
-#define gpsTX 3
-#define gpsRX 4
+#define GPSECHO false
 
 // Shadow clock timer
 unsigned int tick = 0;
@@ -44,8 +43,10 @@ float filterValueGas;
 boolean toggleGas = 0;
 
 // GPS
-//SoftwareSerial gpsSerial(
-//Adafruit_GPS GPS
+SoftwareSerial gpsSerial(3,2);
+Adafruit_GPS GPS(&gpsSerial);
+boolean usingGPSInterrupt = false;
+uint32_t timer = millis();
 
 // IMU setup
 RTIMU *imu;
@@ -60,6 +61,13 @@ const String gas = "gas:";    // Gas sensor
 const char* accl = "accl:";  // Accelerometer
 const char* gyro = "gyro:";  // Gyroscope
 const char* mag = "mag:";    // Magnetometer
+const String gpsTime = "gpsTime:";
+const String gpsDate = "gpsDate:";
+const String gpsFix = "gpsFix:";
+const String gpsSignalQuality = "gpsSignalQuality:";
+const String gpsLatLong = "gpsLatLong:";
+const String gpsSpeed = "gpsSpeed:";
+const String gpsAngle = "gpsAngle:";
 
 extern "C" {
   void setupTimer(void);
@@ -104,6 +112,8 @@ void setup() {
   timerTrigger = 0;
   setupTimer();
 
+  initGPS(GPS, gpsSerial);
+
   Serial.println("Setup complete");
 }
 
@@ -112,6 +122,7 @@ void loop() {
     timerTrigger = 0;
     processSensors();
   }
+  sampleGPS(GPS);
 }
 
 // sensor - sensor tag ending with ":". Eg. "u1:"
@@ -159,6 +170,78 @@ void sampleIMU(RTIMU *imu) {
     fusion.newIMUData(imu->getGyro(), imu->getAccel(), imu->getCompass(), imu->getTimestamp());
   }
 }
+
+// Init GPS
+void initGPS(Adafruit_GPS &GPS, SoftwareSerial &gpsSerial) {
+  GPS.begin(9600);
+  GPS.sendCommand(PMTK_SET_NMEA_OUTPUT_RMCGGA);
+  GPS.sendCommand(PMTK_SET_NMEA_UPDATE_1HZ);
+  GPS.sendCommand(PGCMD_ANTENNA);
+  setupGPSInterrupt();
+  delay(1000);
+  gpsSerial.println(PMTK_Q_RELEASE);
+}
+
+SIGNAL(TIMER0_COMPA_vect) {
+  char c = GPS.read();
+#ifdef UDR0
+  if (GPSECHO)
+    if (c) UDR0 = c;  
+#endif
+}
+
+void sampleGPS(Adafruit_GPS &GPS) {
+  if (GPS.newNMEAreceived()) {
+    if (!GPS.parse(GPS.lastNMEA()))  
+      return;
+    printGPS(GPS);
+  }
+}
+
+void printGPS(Adafruit_GPS gps) {
+  // Print time
+  Serial.print(gpsTime);
+  Serial.print(GPS.hour, DEC);      Serial.print('.');
+  Serial.print(GPS.minute, DEC);    Serial.print('.');
+  Serial.print(GPS.seconds, DEC);   Serial.print('.');
+  Serial.println(GPS.milliseconds);
+
+  // Print date
+  Serial.print(gpsDate);
+  Serial.print(GPS.day, DEC);       Serial.print('.');
+  Serial.print(GPS.month, DEC);     Serial.print('.');
+  Serial.println(GPS.year, DEC);
+
+  // Print fix
+  Serial.print(gpsFix); 
+  Serial.println((int)GPS.fix);
+
+  // Print quality
+  Serial.print(gpsSignalQuality); 
+  Serial.println((int)GPS.fixquality);
+  
+  if (GPS.fix) {
+    // Print long and lat
+    Serial.print(gpsLatLong);
+    Serial.print(GPS.latitudeDegrees, 4);
+    Serial.print(","); 
+    Serial.println(GPS.longitudeDegrees, 4);
+
+    // Print speed (knots)
+    Serial.print(gpsSpeed); 
+    Serial.println(GPS.speed);
+
+    // Print angle
+    Serial.print(gpsAngle); 
+    Serial.println(GPS.angle);
+  }
+}
+
+void setupGPSInterrupt() {
+  OCR0A = 0xAF;
+  TIMSK0 |= _BV(OCIE0A);
+}
+
 
 // Called whenever TCNT1 overflows
 ISR(TIMER1_OVF_vect) {
