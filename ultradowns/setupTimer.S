@@ -16,7 +16,7 @@ setupTimer:
   sts TCNT1,    r16                   ; Preload timer
 
   clr r16
-  ldi r16,      (1 << CS12)           ; Set timer to system clock / 256
+  ldi r16,      (1 << CS11) ; Set timer to system clock / 8
   sts TCCR1B,   r16
 
   clr r16
