@@ -1,6 +1,14 @@
 #include <NewPing.h>
 #include <Adafruit_GPS.h>
 #include <SoftwareSerial.h>
+#include <Wire.h>
+#include "I2Cdev.h"
+#include "RTIMUSettings.h"
+#include "RTIMU.h"
+#include "RTFusionRTQF.h" 
+#include "CalLib.h"
+#include <EEPROM.h>
+
 
 // Ultrasound defines
 #define TRIGGER_PIN_1 11
@@ -33,25 +41,35 @@ boolean toggleGas=0;
 //SoftwareSerial gpsSerial(
 //Adafruit_GPS GPS
 
+// IMU setup
+RTIMU *imu;
+RTFusionRTQF fusion;
+RTIMUSettings settings;
+
+
 // Sensor tags
 const String u1 = "u1:";      // Ultrasound sensor 1
 const String u2 = "u2:";      // Ultrasound sensor 2
 const String gas = "gas:";    // Gas sensor
 
 void setup() {
-  Serial.begin(9600);
-  filterValueU1 = sonar1.ping_cm();
-  filterValueU2 = sonar2.ping_cm();
+  Serial.begin(115200);
+  //filterValueU1 = sonar1.ping_cm();
+  //filterValueU2 = sonar2.ping_cm();
   //filterValueGas = analogRead(GAS_SENSOR_PIN);
-  //initInteruptTimer(1);
+
+  // Initialize IMU
+  imu = RTIMU::createIMU(&settings);
+  initIMU(imu, fusion);
 }
  
 void loop() {
    // Sampling and processing ultrasound sensor
-   unsigned int uS1 = sonar1.ping_cm();
+   /*unsigned int uS1 = sonar1.ping_cm();
    sampleUltrasound(uS1, filterValueU1, filterSizeU, oversamples);
    unsigned int uS2 = sonar2.ping_cm();
    sampleUltrasound(uS2, filterValueU2, filterSizeU, oversamples);
+   */
 
    // Sampling and processing gas sensor
    //gasRead = analogRead(GAS_SENSOR_PIN);
@@ -59,8 +77,11 @@ void loop() {
    //sampleGasSensor(filterValueGas, filterSizeGas);
 
    // Print values
-   printValue(u1, filterValueU1);
-   printValue(u2, filterValueU2);
+   /*printValue(u1, filterValueU1);
+   printValue(u2, filterValueU2);*/
+   sampleIMU(imu);
+   RTMath::display("Mag:", (RTVector3&)imu->getCompass());
+   Serial.println();
 
 }
 
@@ -88,6 +109,27 @@ void sampleUltrasound(unsigned int sample, float &filterValue, unsigned int filt
 void sampleGasSensor(float &filterValue, unsigned int filterSize) {
   unsigned int gasRead = analogRead(GAS_SENSOR_PIN);
   processSensorValue(filterValue, gasRead, filterSizeGas);
+}
+
+// Function initializing an IMU
+void initIMU(RTIMU *imu, RTFusionRTQF &fusion) {
+  Wire.begin();
+  imu->IMUInit();
+  fusion.setSlerpPower(0.02);
+  fusion.setGyroEnable(true);
+  fusion.setAccelEnable(true);
+  fusion.setCompassEnable(true);
+}
+
+// Sample and process the IMU
+void sampleIMU(RTIMU *imu) {
+  int loopCount = 1;
+  while(imu->IMURead()) { // This somehow terminates after a while.. Automagic <3.. Guess you can read the source code to figure out how
+    if (++loopCount >= 10)
+      continue;
+    fusion.newIMUData(imu->getGyro(), imu->getAccel(), imu->getCompass(), imu->getTimestamp());
+  }
+  
 }
 
 /*void initInteruptTimer(int hertz) {
